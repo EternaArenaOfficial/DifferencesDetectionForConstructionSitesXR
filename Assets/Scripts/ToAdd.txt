@@ -1,0 +1,16 @@
+- Location + Rotation offset saving  V
+- Differences between mapping and reference  V
+- Hand menu to check differences   V
+
+- Scrollable list of differences found V
++ Filters, sort by distance, type, etc.  V  IMPROVE
+
+- Save differences to CSV file V
+	- On a server
+
++ Point at object and get info (name, path? (parent>child), percent?, position?, ...) V IMPROVE
+
++ Click on list element to highlight object in 3D view
+
++ Upload mesh
++ Different qr codes for different sections (floors/rooms/...)
