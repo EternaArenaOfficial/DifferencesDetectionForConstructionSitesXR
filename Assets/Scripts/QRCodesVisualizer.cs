@@ -1,57 +1,65 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Networking;
-using System.IO;
 using Microsoft.MixedReality.QR;
-using Dummiesman;
 using TMPro;
-using System;
-using System.Text.RegularExpressions;
 
 namespace QRTracking
 {
     public class QRCodesVisualizer : MonoBehaviour
     {
         public WeeksManager weeksManager;
-
         public GameObject qrCodePrefab;
         public GameObject objPrefab;
-        public Vector3 positionOffset = Vector3.zero;
-        public Vector3 rotationOffset = Vector3.zero;
 
-        public TextMeshProUGUI debugTMP;
+        public Vector3 positionOffset = new Vector3(0.0f, 0.0f, 0.0f);
+        public Vector3 rotationOffset = new Vector3(0.0f, 0.0f, 0.0f);
+
+        public UiValue xValue, yValue, zValue;
+        public UiValue xRot, yRot, zRot;
+
+        private const string PosKey = "SavedOffsetPosition";
+        private const string RotKey = "SavedOffsetRotation";
 
         private GameObject obj;
         private Vector3 previousPosition;
         private Vector3 previousRotation;
+        private bool objPlaced = false;
 
-        private SortedDictionary<System.Guid, GameObject> qrCodesObjectsList = new SortedDictionary<Guid, GameObject>();
-        private HashSet<string> usedQRData = new HashSet<string>();
-        private Queue<ActionData> pendingActions = new Queue<ActionData>();
+        private Vector3 lastUiPosition;
+        private Vector3 lastUiRotation;
+        private Vector3 lastOrienterPosition;
+        private Vector3 lastOrienterRotation;
+
+        private SortedDictionary<System.Guid, GameObject> qrCodesObjectsList;
         private bool clearExisting = false;
 
-        private const string PosKey = "SavedOffsetPosition";
-        private const string RotKey = "SavedOffsetRotation";
-        private const string ModelHashKey = "CachedModelHash";
+        private HashSet<string> usedQRData = new HashSet<string>();
+        private bool qrFoundThisSession = false;
+
+        private bool firstSyncDone = false;
+
+        public TextMeshProUGUI debugText;
 
         struct ActionData
         {
-            public enum Type { Added, Updated, Removed };
+            public enum Type { Added, Updated, Removed }
             public Type type;
             public Microsoft.MixedReality.QR.QRCode qrCode;
 
             public ActionData(Type type, Microsoft.MixedReality.QR.QRCode qRCode) : this()
             {
                 this.type = type;
-                this.qrCode = qRCode;
+                qrCode = qRCode;
             }
         }
 
+        private Queue<ActionData> pendingActions = new Queue<ActionData>();
+
         void Start()
         {
-            ClearAllTrackedQRCodes();
             Debug.Log("QRCodesVisualizer start");
+            qrCodesObjectsList = new SortedDictionary<System.Guid, GameObject>();
 
             QRCodesManager.Instance.QRCodesTrackingStateChanged += Instance_QRCodesTrackingStateChanged;
             QRCodesManager.Instance.QRCodeAdded += Instance_QRCodeAdded;
@@ -59,7 +67,7 @@ namespace QRTracking
             QRCodesManager.Instance.QRCodeRemoved += Instance_QRCodeRemoved;
 
             if (qrCodePrefab == null)
-                throw new Exception("Prefab not assigned");
+                throw new System.Exception("Prefab not assigned");
 
             LoadOffsets();
         }
@@ -87,7 +95,6 @@ namespace QRTracking
                 pendingActions.Enqueue(new ActionData(ActionData.Type.Removed, e.Data));
         }
 
-
         private void HandleEvents()
         {
             lock (pendingActions)
@@ -97,35 +104,56 @@ namespace QRTracking
                     var action = pendingActions.Dequeue();
                     var qrData = action.qrCode?.Data;
 
-                    if (string.IsNullOrEmpty(qrData)) continue;
-
-                    if (action.type == ActionData.Type.Added || action.type == ActionData.Type.Updated)
+                    if (action.type == ActionData.Type.Added)
                     {
                         if (!usedQRData.Contains(qrData))
                         {
-                            var qrCodeObject = Instantiate(qrCodePrefab, Vector3.zero, Quaternion.identity);
+                            GameObject qrCodeObject = Instantiate(qrCodePrefab, Vector3.zero, Quaternion.identity);
                             qrCodeObject.GetComponent<SpatialGraphCoordinateSystem>().Id = action.qrCode.SpatialGraphNodeId;
                             qrCodeObject.GetComponent<QRCode>().qrCode = action.qrCode;
 
-                            qrCodesObjectsList[action.qrCode.Id] = qrCodeObject;
+                            qrCodesObjectsList.Add(action.qrCode.Id, qrCodeObject);
                             usedQRData.Add(qrData);
                         }
                         else
                         {
-                            Debug.Log($"Duplicate QR code data ignored: {qrData}");
+                            Debug.Log($"Duplicate QR code data detected and ignored: {qrData}");
+                        }
+                    }
+                    else if (action.type == ActionData.Type.Updated)
+                    {
+                        if (!qrCodesObjectsList.ContainsKey(action.qrCode.Id))
+                        {
+                            if (!usedQRData.Contains(qrData))
+                            {
+                                GameObject qrCodeObject = Instantiate(qrCodePrefab, Vector3.zero, Quaternion.identity);
+                                qrCodeObject.GetComponent<SpatialGraphCoordinateSystem>().Id = action.qrCode.SpatialGraphNodeId;
+                                qrCodeObject.GetComponent<QRCode>().qrCode = action.qrCode;
+
+                                qrCodesObjectsList.Add(action.qrCode.Id, qrCodeObject);
+                                usedQRData.Add(qrData);
+                            }
                         }
                     }
                     else if (action.type == ActionData.Type.Removed)
                     {
                         if (qrCodesObjectsList.ContainsKey(action.qrCode.Id))
                         {
-                            var go = qrCodesObjectsList[action.qrCode.Id];
+                            GameObject go = qrCodesObjectsList[action.qrCode.Id];
                             string dataToRemove = go.GetComponent<QRCode>().qrCode?.Data;
-                            if (dataToRemove != null)
+
+                            if (dataToRemove != null && usedQRData.Contains(dataToRemove))
                                 usedQRData.Remove(dataToRemove);
 
                             Destroy(go);
                             qrCodesObjectsList.Remove(action.qrCode.Id);
+
+                            if (dataToRemove == "Test1")
+                            {
+                                if (obj != null) Destroy(obj);
+                                obj = null;
+                                qrFoundThisSession = false;
+                            }
                         }
                     }
                 }
@@ -136,225 +164,72 @@ namespace QRTracking
                 clearExisting = false;
                 foreach (var obj in qrCodesObjectsList.Values)
                     Destroy(obj);
+
                 qrCodesObjectsList.Clear();
                 usedQRData.Clear();
-            }
-        }
 
-        public void Scan()
-        {
-            foreach (var pair in qrCodesObjectsList)
-            {
-                var qr = pair.Value;
-                var qrCode = qr.GetComponent<QRCode>();
-                string qrData = qrCode.qrCode?.Data;
-
-                var spatial = qr.GetComponent<SpatialGraphCoordinateSystem>();
-                if (spatial == null || !spatial.IsLocated || string.IsNullOrEmpty(qrData)) continue;
-
-                if (qrData == "Test1")
-                {
-                    UpdateReferenceObject(qrCode);
-                    break;
-                }
-                else if (qrData.StartsWith("http"))
-                {
-                    UpdateDownloadedObject(qrCode);
-                    break;
-                }
+                if (obj != null) Destroy(obj);
+                obj = null;
+                qrFoundThisSession = false;
             }
         }
 
         void Update()
         {
-            if(Input.GetKeyDown(KeyCode.Q)) StartCoroutine(DownloadAndReplaceModel(@"https://drive.google.com/file/d/1BTqtfiU7lIGF2tDfYplgi5pX7f9N8SnH/view?usp=sharing"));
-            //return;
+            if (Input.GetKeyDown(KeyCode.W)) weeksManager.AddWeeks();
+
             HandleEvents();
-        }
 
-        private void UpdateReferenceObject(QRCode qr)
-        {
-            Vector3 localOffsetPos = qr.orienter.transform.position;
-            Vector3 localOffsetRot = qr.orienter.transform.eulerAngles;
+            bool foundQR = false;
 
-            if (previousPosition != localOffsetPos || previousRotation != localOffsetRot)
+            foreach (var pair in qrCodesObjectsList)
             {
-                previousPosition = localOffsetPos;
-                previousRotation = localOffsetRot;
-                SaveOffsets(localOffsetPos, localOffsetRot);
+                var qrGO = pair.Value;
+                QRCode qrCode = qrGO.GetComponent<QRCode>();
+                var qrData = qrCode.qrCode?.Data;
+
+                if (qrData != "Test1") continue;
+
+                var spatial = qrGO.GetComponent<SpatialGraphCoordinateSystem>();
+                if (spatial != null && spatial.IsLocated)
+                {
+                    SyncOrienterAndUiValues(qrCode);
+                    UpdateObjectTransform(qrCode); // still needed to position the actual object in the world
+                    foundQR = true;
+                    qrFoundThisSession = true;
+                    break;
+                }
             }
 
+
+            if (!foundQR && obj != null)
+            {
+                Destroy(obj);
+                obj = null;
+                qrFoundThisSession = false;
+            }
+        }
+
+        private void UpdateObjectTransform(QRCode qr)
+        {
             if (obj == null)
             {
-                obj = Instantiate(objPrefab, transform);
+                obj = Instantiate(objPrefab, Vector3.zero, Quaternion.identity, transform);
+                qr.relatedObj = obj;
                 weeksManager.AddWeeks();
             }
 
-            obj.transform.position = localOffsetPos + positionOffset;
-            obj.transform.eulerAngles = localOffsetRot + rotationOffset;
-        }
-
-        private void UpdateDownloadedObject(QRCode qr)
-        {
-            Vector3 localOffsetPos = qr.orienter.transform.position;
-            Vector3 localOffsetRot = qr.orienter.transform.eulerAngles;
-
-            if (previousPosition != localOffsetPos || previousRotation != localOffsetRot)
+            if (qr.orienter == null)
             {
-                previousPosition = localOffsetPos;
-                previousRotation = localOffsetRot;
-                SaveOffsets(localOffsetPos, localOffsetRot);
+                debugText.text = ("qr.orienter is null. Skipping transform update.");
+                return;
             }
 
-            string modelUrl = qr.qrCode?.Data;
-            if (!string.IsNullOrEmpty(modelUrl))
-                StartCoroutine(DownloadAndReplaceModel(modelUrl));
-        }
+            Transform orienter = qr.orienter.transform;
 
-        private IEnumerator DownloadAndReplaceModel(string url)
-        {
-            print("-A0-");
-
-            string cleanUrl = ConvertGoogleDriveToDirect(url);
-
-            print("Downloading model from: " + cleanUrl);
-            print("Model URL: " + url);
-
-            string fileName = "Reference.obj";
-            string localPath = Path.Combine(Application.persistentDataPath, fileName);
-
-            print("Local path: " + localPath);
-            debugTMP.text += $"-A0 LP {localPath}-";
-
-            UnityWebRequest request = UnityWebRequest.Get(cleanUrl);
-            request.timeout = 20;
-            yield return request.SendWebRequest();
-
-            debugTMP.text += "-A1-";
-            print("-A1-");
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogError("Download failed: " + request.error);
-                debugTMP.text += "[Error] Download failed: " + request.error + "\n";
-                yield break;
-            }
-
-            debugTMP.text += "-A2-";
-            print("-A2-");
-
-            string remoteHash = request.GetResponseHeader("ETag") ?? request.GetResponseHeader("Last-Modified") ?? "";
-            string savedHash = PlayerPrefs.GetString(ModelHashKey, "");
-
-            if (File.Exists(localPath) && savedHash == remoteHash)
-            {
-                Debug.Log("Model already exists and hash matches, skipping download.");
-                debugTMP.text += "[Info] Model already exists and hash matches\n";
-            }
-            else
-            {
-                debugTMP.text += "-A2.1-";
-                print("-A2.1-");
-
-                try
-                {
-                    File.WriteAllBytes(localPath, request.downloadHandler.data);
-                    PlayerPrefs.SetString(ModelHashKey, remoteHash);
-                    PlayerPrefs.Save();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError("File save error: " + e.Message);
-                    debugTMP.text += "[Error] File save failed: " + e.Message + "\n";
-                    yield break;
-                }
-
-                debugTMP.text += "-A2.2-";
-                print("-A2.2-");
-            }
-
-            Debug.Log(File.ReadAllText(localPath).Substring(0, 500));
-            debugTMP.text += $"-A3-";
-            print("-A3-");
-
-            if (obj != null)
-                Destroy(obj);
-
-            // Remove mtllib line
-            string objText = File.ReadAllText(localPath);
-            objText = Regex.Replace(objText, @"^mtllib .*\r?\n?", "", RegexOptions.Multiline);
-            File.WriteAllText(localPath, objText);
-
-
-            GameObject loadedObj;
-            try
-            {
-                loadedObj = new OBJLoader().Load(localPath);
-                debugTMP.text += "[Success] Model loaded\n";
-                print("[Success] Model loaded");
-
-                if (loadedObj == null)
-                {
-                    debugTMP.text += "[Error] loadedObj is null\n";
-                    yield break;
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("Model load failed: " + e.Message);
-                debugTMP.text += "[Error] Model load failed: " + e.Message + "\n";
-                yield break;
-            }
-
-            debugTMP.text += $"MeshFilters: {loadedObj.GetComponentsInChildren<MeshFilter>().Length}\n";
-            debugTMP.text += $"Renderers: {loadedObj.GetComponentsInChildren<Renderer>().Length}\n";
-            debugTMP.text += $"SkinnedMeshRenderers: {loadedObj.GetComponentsInChildren<SkinnedMeshRenderer>().Length}\n";
-
-            debugTMP.text += "-A4-";
-            print("-A4-");
-
-            foreach (var mf in loadedObj.GetComponentsInChildren<MeshFilter>())
-            {
-                if (mf.sharedMesh != null)
-                    mf.sharedMesh = Instantiate(mf.sharedMesh);
-            }
-
-            foreach (var smr in loadedObj.GetComponentsInChildren<SkinnedMeshRenderer>())
-            {
-                if (smr.sharedMesh != null)
-                    smr.sharedMesh = Instantiate(smr.sharedMesh);
-            }
-
-            // 🔧 Fix for missing shader issue
-            Shader defaultShader = Shader.Find("Standard");
-            if (defaultShader == null)
-            {
-                debugTMP.text += "[Error] Shader 'Standard' not found\n";
-                Debug.LogError("Shader 'Standard' not found");
-            }
-            else
-            {
-                foreach (var renderer in loadedObj.GetComponentsInChildren<Renderer>())
-                {
-                    if (renderer.sharedMaterial == null)
-                    {
-                        renderer.material = new Material(defaultShader);
-                        debugTMP.text += "[Fix] Assigned Standard shader to renderer\n";
-                    }
-                }
-            }
-
-            loadedObj.transform.SetParent(transform);
-            loadedObj.transform.position = previousPosition + positionOffset;
-            loadedObj.transform.eulerAngles = previousRotation + rotationOffset;
-
-            obj = loadedObj;
-
-            debugTMP.text += "Model loaded and positioned.\n";
-            debugTMP.text += "-A5-";
-            print("-A5-");
-
-            weeksManager.AddWeeks();
+            obj.transform.position = orienter.position;
+            obj.transform.eulerAngles = orienter.eulerAngles;
+            obj.transform.localScale = Vector3.one * 0.001f;
         }
 
         private void SaveOffsets(Vector3 position, Vector3 rotation)
@@ -385,44 +260,71 @@ namespace QRTracking
             }
         }
 
+        private void SyncOrienterAndUiValues(QRCode qr)
+        {
+            if (qr.orienter == null) return;
+
+            Transform orienter = qr.orienter.transform;
+
+            Vector3 uiPos = new Vector3(xValue.Value, yValue.Value, zValue.Value);
+            Vector3 uiRot = new Vector3(xRot.Value, yRot.Value, zRot.Value);
+
+            Vector3 orienterPos = orienter.position;
+            Vector3 orienterRot = orienter.eulerAngles;
+
+            if (!firstSyncDone)
+            {
+                // On first detection, align UI with orienter
+                xValue.Value = orienterPos.x;
+                yValue.Value = orienterPos.y;
+                zValue.Value = orienterPos.z;
+
+                xRot.Value = orienterRot.x;
+                yRot.Value = orienterRot.y;
+                zRot.Value = orienterRot.z;
+
+                lastUiPosition = orienterPos;
+                lastUiRotation = orienterRot;
+                lastOrienterPosition = orienterPos;
+                lastOrienterRotation = orienterRot;
+
+                firstSyncDone = true;
+                return;
+            }
+
+            bool uiChanged = uiPos != lastUiPosition || uiRot != lastUiRotation;
+            bool orienterChanged = orienterPos != lastOrienterPosition || orienterRot != lastOrienterRotation;
+
+            if (uiChanged && !orienterChanged)
+            {
+                // UI changed → update orienter
+                orienter.position = uiPos;
+                orienter.eulerAngles = uiRot;
+            }
+            else if (orienterChanged && !uiChanged)
+            {
+                // Orienter changed → update UI
+                xValue.Value = orienterPos.x;
+                yValue.Value = orienterPos.y;
+                zValue.Value = orienterPos.z;
+
+                xRot.Value = orienterRot.x;
+                yRot.Value = orienterRot.y;
+                zRot.Value = orienterRot.z;
+            }
+
+            // Save last frame values
+            lastUiPosition = new Vector3(xValue.Value, yValue.Value, zValue.Value);
+            lastUiRotation = new Vector3(xRot.Value, yRot.Value, zRot.Value);
+            lastOrienterPosition = orienter.position;
+            lastOrienterRotation = orienter.eulerAngles;
+        }
+
         public void ClearSavedOffsets()
         {
             PlayerPrefs.DeleteKey(PosKey);
             PlayerPrefs.DeleteKey(RotKey);
-            PlayerPrefs.DeleteKey(ModelHashKey);
             PlayerPrefs.Save();
-        }
-
-        private void ClearAllTrackedQRCodes()
-        {
-            foreach (var obj in qrCodesObjectsList.Values)
-                Destroy(obj);
-
-            qrCodesObjectsList.Clear();
-            usedQRData.Clear();
-            clearExisting = false;
-        }
-
-        public static string ConvertGoogleDriveToDirect(string originalUrl)
-        {
-            if (string.IsNullOrEmpty(originalUrl)) return originalUrl;
-
-            if (originalUrl.Contains("/uc?id="))
-                return originalUrl; // Already converted
-
-            string marker = "/file/d/";
-            if (originalUrl.Contains(marker))
-            {
-                int idStart = originalUrl.IndexOf(marker) + marker.Length;
-                int idEnd = originalUrl.IndexOf('/', idStart);
-                if (idEnd == -1) idEnd = originalUrl.Length;
-
-                string fileId = originalUrl.Substring(idStart, idEnd - idStart);
-                return $"https://drive.google.com/uc?id={fileId}";
-            }
-
-            Debug.LogWarning("Invalid Google Drive link format.");
-            return originalUrl;
         }
     }
 }

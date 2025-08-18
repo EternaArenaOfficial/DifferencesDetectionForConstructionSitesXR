@@ -5,6 +5,7 @@ using Microsoft.MixedReality.Toolkit.SpatialAwareness;
 using Microsoft.MixedReality.Toolkit.UI;
 using System.IO;
 using System.Text;
+using System.Collections;
 
 
 public class VoxelComparison : MonoBehaviour
@@ -31,25 +32,33 @@ public class VoxelComparison : MonoBehaviour
     public VerticalContent list;
     public ListElementUi listElement;
 
+    public VerticalContent weeksList;
+
+    public PressableButtonHoloLens2 compareButton;
 
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.V))
         {
-            CompareVoxelGrids();
+            StartCoroutine(CompareVoxelGridsCoroutine());
         }
     }
 
-    void CompareVoxelGrids()
+    public void CompareVoxelGrids()
     {
+        StartCoroutine(CompareVoxelGridsCoroutine());
+    }
+
+    IEnumerator CompareVoxelGridsCoroutine()
+    {
+        if(compareButton) compareButton.enabled = false;
         objectVoxelStats.Clear();
 
         HashSet<Vector3Int> scannedVoxels = VoxelizeSpatialMesh(referenceContainer.transform);
-        CompareAndReport(referenceContainer.transform, scannedVoxels);
+        yield return StartCoroutine(CompareAndReportCoroutine(referenceContainer.transform, scannedVoxels));
 
         Debug.Log("\n--- Summary ---");
         Output += "--- Summary ---\n";
-
         StringBuilder csvBuilder = new StringBuilder();
         csvBuilder.AppendLine("Name,Percentage,Status");
 
@@ -59,8 +68,18 @@ public class VoxelComparison : MonoBehaviour
             int matched = kvp.Value.matched;
             int total = kvp.Value.total;
 
-            float percent = total > 0 ? (float)matched / total * 100f : 100f;
+            if (!t.gameObject.activeInHierarchy || total == 0)
+                continue;
+
+            float percent = (float)matched / total * 100f;
             string status = percent >= 99.9f ? "Completed" : "Not Completed";
+
+            bool isDirectChild = t.parent == referenceContainer.transform.GetChild(0);
+
+            if (isDirectChild && weeksList.container.GetChild(t.GetSiblingIndex()).TryGetComponent<WeekPanel>(out var weekPanel))
+            {
+                weekPanel.value.text = $"{percent:F1}%";
+            }
 
             Debug.Log($"{t.name} - {status} ({percent:F1}%)");
             Output += $"{t.name} - {status} ({percent:F1}%)\n";
@@ -74,42 +93,53 @@ public class VoxelComparison : MonoBehaviour
                 button.value.text = $"({percent:F1}%)";
                 list.AddElement(button.gameObject);
             }
+
+            yield return null; // Yield after each object summary update
         }
 
         SaveCSV(csvBuilder.ToString());
+        if (compareButton) compareButton.enabled = true;
     }
 
-
-    void CompareAndReport(Transform current, HashSet<Vector3Int> scannedVoxels)
+    IEnumerator CompareAndReportCoroutine(Transform current, HashSet<Vector3Int> scannedVoxels)
     {
         int matched = 0, total = 0;
 
-        MeshFilter mf = current.GetComponent<MeshFilter>();
-        if (mf != null)
+        if (current.gameObject.activeInHierarchy)
         {
-            HashSet<Vector3Int> partVoxels = VoxelizeMesh(mf, referenceContainer.transform);
-            total += partVoxels.Count;
-
-            foreach (var voxel in partVoxels)
+            MeshFilter mf = current.GetComponent<MeshFilter>();
+            if (mf != null)
             {
-                if (scannedVoxels.Contains(voxel))
+                HashSet<Vector3Int> partVoxels = VoxelizeMesh(mf, referenceContainer.transform);
+                total += partVoxels.Count;
+
+                int counter = 0;
+                foreach (var voxel in partVoxels)
                 {
-                    matched++;
-                }
-                else if (debugCubePrefab != null)
-                {
-                    Vector3 worldPos = referenceContainer.transform.TransformPoint(VoxelToLocalPosition(voxel));
-                    Instantiate(debugCubePrefab, worldPos, Quaternion.identity);
+                    if (scannedVoxels.Contains(voxel))
+                    {
+                        matched++;
+                    }
+                    else if (debugCubePrefab != null)
+                    {
+                        Vector3 worldPos = referenceContainer.transform.TransformPoint(VoxelToLocalPosition(voxel));
+                        Instantiate(debugCubePrefab, worldPos, Quaternion.identity);
+                    }
+
+                    counter++;
+                    if (counter % 500 == 0) yield return null; // Yield every 500 voxels
                 }
             }
         }
 
         foreach (Transform child in current)
         {
-            CompareAndReport(child, scannedVoxels);
-            var childStats = objectVoxelStats[child];
-            matched += childStats.matched;
-            total += childStats.total;
+            yield return StartCoroutine(CompareAndReportCoroutine(child, scannedVoxels));
+            if (objectVoxelStats.TryGetValue(child, out var childStats))
+            {
+                matched += childStats.matched;
+                total += childStats.total;
+            }
         }
 
         objectVoxelStats[current] = (matched, total);

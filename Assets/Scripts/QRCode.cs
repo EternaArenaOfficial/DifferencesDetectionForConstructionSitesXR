@@ -16,6 +16,7 @@ namespace QRTracking
         public Microsoft.MixedReality.QR.QRCode qrCode;
         private GameObject qrCodeCube;
         public GameObject orienter;
+        public GameObject relatedObj;
 
         public float PhysicalSize { get; private set; }
         public string CodeText { get; private set; }
@@ -99,6 +100,8 @@ namespace QRTracking
                 launch = false;
                 LaunchUri();
             }
+
+            orienter.SetActive(qrCode.Data == "Test1");
         }
 
         void LaunchUri()

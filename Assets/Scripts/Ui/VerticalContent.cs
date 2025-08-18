@@ -1,3 +1,4 @@
+using Microsoft.MixedReality.Toolkit.UI;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -23,24 +24,34 @@ public class VerticalContent : MonoBehaviour
     private float totalContentHeight = 0f;
 
     public SortMode sortMode = SortMode.Hierarchy;
+    public PinchSlider pinchSlider; // PinchSlider for scroll control
 
+    private bool isUpdatingFromSlider = false;
 
     void Start()
     {
         onElementAdded += OrderContent;
+
+        if (pinchSlider != null)
+        {
+            pinchSlider.OnValueUpdated.AddListener(OnSliderValueUpdated);
+        }
+        else
+        {
+            Debug.LogWarning("PinchSlider reference is not assigned.");
+        }
+    }
+
+    private void OnSliderValueUpdated(SliderEventData eventData)
+    {
+        isUpdatingFromSlider = true;
+        SetScrollValue(eventData.NewValue);
+        isUpdatingFromSlider = false;
     }
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.UpArrow)) SetScrollValue(scrollValue + 0.05f);
-        if (Input.GetKeyDown(KeyCode.DownArrow)) SetScrollValue(scrollValue - 0.05f);
-        if (Input.GetKeyDown(KeyCode.LeftArrow)) SetNextSortMode();
         UpdateScrollOffset();
-
-        if (Input.GetKeyDown(KeyCode.P))
-        {
-            onElementAdded.Invoke();
-        }
 
         // Hide elements outside visible area
         foreach (Transform child in container)
@@ -91,17 +102,17 @@ public class VerticalContent : MonoBehaviour
 
             case SortMode.Hierarchy:
             default:
-                // Do nothing — keep original order from the hierarchy
+                // Keep original order
                 break;
         }
 
-        // Apply new sibling index based on sorted list
+        // Apply new sibling index
         for (int i = 0; i < children.Count; i++)
         {
             children[i].SetSiblingIndex(i);
         }
 
-        // Layout elements
+        // Layout elements top-down
         totalContentHeight = 0f;
         float y = 0f;
 
@@ -109,7 +120,7 @@ public class VerticalContent : MonoBehaviour
         {
             if (child.TryGetComponent<ListElementUi>(out var element))
             {
-                child.localPosition = new Vector3(0, -y, 0); // Lay out from top down
+                child.localPosition = new Vector3(0, -y, 0);
                 y += element.height + spacing;
                 totalContentHeight += element.height + spacing;
             }
@@ -133,6 +144,11 @@ public class VerticalContent : MonoBehaviour
     {
         scrollValue = Mathf.Clamp01(value);
         UpdateScrollOffset();
+
+        if (!isUpdatingFromSlider && pinchSlider != null && !Mathf.Approximately(pinchSlider.SliderValue, scrollValue))
+        {
+            pinchSlider.SliderValue = scrollValue;
+        }
     }
 
     public void AddToScrollValue(float value)
@@ -155,7 +171,7 @@ public class VerticalContent : MonoBehaviour
     public void SetNextSortMode()
     {
         SetSortMode((SortMode)(((int)sortMode + 1) % Enum.GetValues(typeof(SortMode)).Length));
-        print($"Sort mode set to: {sortMode}");
+        Debug.Log($"Sort mode set to: {sortMode}");
     }
 
     public void Clear()

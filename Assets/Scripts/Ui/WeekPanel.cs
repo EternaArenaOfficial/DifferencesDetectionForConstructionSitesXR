@@ -1,12 +1,17 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+public enum CurrentState
+{
+    Active,
+    ActiveUpToThis,
+}
+
 public class WeekPanel : ListElementUi
 {
     [Header("Configuration")]
     public GameObject weekObject;
     public MeshRenderer backPlate;
-    public Material selectedMaterial;
     public Material completedMaterial;
     public Material offMaterial;
 
@@ -17,8 +22,11 @@ public class WeekPanel : ListElementUi
     private Material defaultMaterial;
     private static bool isFiltered = false;
 
+    CurrentState currentState = CurrentState.Active;
+
     // Store original materials of each renderer in weekObject
     private Dictionary<Renderer, Material[]> originalMaterials = new Dictionary<Renderer, Material[]>();
+    private string prefsKey => $"WeekPanel_Completed_{weekObject.name}";
 
     private void Start()
     {
@@ -27,7 +35,6 @@ public class WeekPanel : ListElementUi
             defaultMaterial = backPlate.material;
         }
 
-        // Ensure weekObject is active for material caching
         bool wasInactive = false;
         if (weekObject != null && !weekObject.activeSelf)
         {
@@ -43,9 +50,15 @@ public class WeekPanel : ListElementUi
         }
 
         SetWeekActive(true);
+
+        isCompleted = PlayerPrefs.GetInt(prefsKey, 0) == 1;
         CompleteWeek(isCompleted);
     }
 
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.J) && transform.GetSiblingIndex() == 0) ToggleCompleteWeek();
+    }
     public void ToggleWeekFilter()
     {
         isFiltered = !isFiltered;
@@ -75,16 +88,6 @@ public class WeekPanel : ListElementUi
         {
             weekObject.SetActive(active);
         }
-
-        ApplyVisualState();
-    }
-
-    private void ApplyVisualState()
-    {
-        if (backPlate != null && defaultMaterial != null && selectedMaterial != null)
-        {
-            backPlate.material = isSelected ? selectedMaterial : defaultMaterial;
-        }
     }
 
     public void ToggleCompleteWeek()
@@ -102,6 +105,9 @@ public class WeekPanel : ListElementUi
         }
 
         ApplyWeekObjectVisualState();
+
+        PlayerPrefs.SetInt(prefsKey, isCompleted ? 1 : 0);
+        PlayerPrefs.Save();
     }
 
     private void ApplyWeekObjectVisualState()
@@ -136,6 +142,21 @@ public class WeekPanel : ListElementUi
         }
     }
 
+    public void ChangeState()
+    {
+        switch (currentState)
+        {
+            case CurrentState.ActiveUpToThis:
+                FocusThisWeek();
+                currentState = CurrentState.Active;
+                break;
+            default:
+                SetWeekRangeUpToThis();
+                currentState = CurrentState.ActiveUpToThis;
+                break;
+        }
+    }
+
     public void SetWeekRangeUpToThis()
     {
         Transform parent = transform.parent;
@@ -161,6 +182,20 @@ public class WeekPanel : ListElementUi
         Debug.Log($"[WeekPanel] Showing weeks up to: {weekObject.name}");
     }
 
+    public void FocusThisWeek()
+    {
+        Transform parent = transform.parent;
+        if (parent == null) return;
+
+        foreach (Transform child in parent)
+        {
+            if (child.TryGetComponent<WeekPanel>(out var panel))
+            {
+                panel.SetWeekActive(panel == this);
+            }
+        }
+    }
+
     private void CacheOriginalMaterials()
     {
         if (weekObject == null) return;
@@ -169,7 +204,6 @@ public class WeekPanel : ListElementUi
 
         foreach (Renderer renderer in renderers)
         {
-            // Clone to prevent reference issues
             Material[] originals = renderer.materials;
             Material[] copy = new Material[originals.Length];
             for (int i = 0; i < originals.Length; i++)

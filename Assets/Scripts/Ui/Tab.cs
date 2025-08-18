@@ -26,7 +26,13 @@ public class Tab : MonoBehaviour
     private void Start()
     {
         defaultMaterial = backPanel.material;
-        IsSelected = isSelected;
+
+        // Only one tab should be active at start
+        if (isSelected)
+            ActivateTab();  // Ensures mutual exclusivity
+
+        else
+            IsSelected = false;
     }
 
     public void ActivateTab()

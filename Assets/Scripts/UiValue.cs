@@ -1,9 +1,7 @@
-using Microsoft.MixedReality.Toolkit.Experimental.UI;
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
+using System;
+using TMPro;
+using System.Globalization;
 
 public class UiValue : MonoBehaviour
 {
@@ -14,45 +12,86 @@ public class UiValue : MonoBehaviour
         set
         {
             this.value = value;
-            if (onValueChanged != null)
+            onValueChanged?.Invoke();
+        }
+    }
+
+    public Action onValueChanged;
+
+    public TextMeshPro tmp;               // Main UI display of the value
+    public TextMeshProUGUI debugText;     // Optional debug text
+
+    private TouchScreenKeyboard keyboard;
+    private bool keyboardWasOpen = false;
+
+    void Awake()
+    {
+        onValueChanged += RefreshText;
+        RefreshText();
+    }
+
+    void Update()
+    {
+        if (keyboard != null && keyboardWasOpen)
+        {
+            string rawText = keyboard.text;
+            string sanitized = rawText.Replace(',', '.');
+
+            if (!string.IsNullOrEmpty(sanitized))
             {
-                onValueChanged.Invoke();
+                if (float.TryParse(sanitized, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedValue))
+                {
+                    // Live update of display without assigning Value
+                    tmp.text = parsedValue.ToString("F2");
+                    debugText.text = $"Typing valid: {parsedValue}";
+                }
+                else
+                {
+                    debugText.text = $"Typing invalid: {sanitized}";
+                }
+            }
+
+            if (keyboard.done)
+            {
+                if (float.TryParse(sanitized, NumberStyles.Float, CultureInfo.InvariantCulture, out float finalValue))
+                {
+                    Value = finalValue;
+                    debugText.text += $"\nConfirmed value: {Value}";
+                }
+                else
+                {
+                    debugText.text += $"\nInvalid input on confirm: {sanitized}";
+                }
+
+                keyboardWasOpen = false;
+                keyboard = null;
             }
         }
     }
 
-    public MRTKTMPInputField inputField;
-
-    public Action onValueChanged;
-
-    private void Start()
+    public void OpenKeyboard()
     {
-        onValueChanged += RefreshText;
-    }
+        keyboard = TouchScreenKeyboard.Open(
+            "", // Empty input to start fresh
+            TouchScreenKeyboardType.DecimalPad, // Allows decimal point
+            false, // autocorrection
+            false, // multiline
+            false, // secure
+            false, // alert
+            "Enter new value" // placeholder
+        );
 
+        keyboardWasOpen = true;
+    }
 
     void RefreshText()
     {
-        inputField.text = Value.ToString("F2");
+        Debug.Log("Refreshed value: " + Value.ToString("F2"));
+        tmp.text = Value.ToString("F2");
     }
 
-
-    public void UpdateValue()
+    public void AddToValue(float amount)
     {
-        if (inputField != null)
-        {
-            float.TryParse(inputField.text, out value);
-            Value = value;
-        }
-    }
-
-    public void AddToValue()
-    {
-        Value += Value * .1f;
-    }
-
-    public void RemoveFromValue()
-    {
-        Value -= Value * .1f;
+        Value += amount;
     }
 }

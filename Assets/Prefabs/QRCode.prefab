@@ -337,6 +337,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   orienter: {fileID: 256780645354897467}
+  relatedObj: {fileID: 0}
 --- !u!114 &114124506670308152
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -984,7 +985,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &4762226887713186
 Transform:
   m_ObjectHideFlags: 0
@@ -1347,7 +1348,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &6870467204080756355
 Transform:
   m_ObjectHideFlags: 0
@@ -1627,6 +1628,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: Orienter
       objectReference: {fileID: 0}
+    - target: {fileID: 2402495745455435854, guid: ae4aaeac429ea4b4ba6e6a9b2bc8a213,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 2402495745455435855, guid: ae4aaeac429ea4b4ba6e6a9b2bc8a213,
         type: 3}
       propertyPath: m_RootOrder
@@ -1635,17 +1641,17 @@ PrefabInstance:
     - target: {fileID: 2402495745455435855, guid: ae4aaeac429ea4b4ba6e6a9b2bc8a213,
         type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.5
+      value: 0.1
       objectReference: {fileID: 0}
     - target: {fileID: 2402495745455435855, guid: ae4aaeac429ea4b4ba6e6a9b2bc8a213,
         type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.5
+      value: 0.1
       objectReference: {fileID: 0}
     - target: {fileID: 2402495745455435855, guid: ae4aaeac429ea4b4ba6e6a9b2bc8a213,
         type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.5
+      value: 0.1
       objectReference: {fileID: 0}
     - target: {fileID: 2402495745455435855, guid: ae4aaeac429ea4b4ba6e6a9b2bc8a213,
         type: 3}
