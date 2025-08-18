@@ -95,7 +95,7 @@ git clone https://github.com/EternaArenaOfficial/DifferencesDetectionForConstruc
 ---
 
 ## 📚 References & Resources
-- Unity Spatial Mapping: https://docs.unity3d.com/Manual/SpatialMapping.html
+- Unity Spatial Mapping: https://learn.microsoft.com/en-us/windows/mixed-reality/develop/unity/spatial-mapping-in-unity
 - MRTK Documentation: https://learn.microsoft.com/en-us/windows/mixed-reality/mrtk-unity/
-- HoloLens 2 Development Guide: https://learn.microsoft.com/en-us/windows/mixed-reality/develop/
+- HoloLens 2 Development Guide: https://learn.microsoft.com/en-us/windows/mixed-reality/develop/unity/unity-development-overview
 - Voxel-Based Mesh Comparison Concepts: https://www.sciencedirect.com/topics/engineering/voxel
