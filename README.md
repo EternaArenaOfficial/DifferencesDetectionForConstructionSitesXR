@@ -52,7 +52,6 @@ When scanned, the app anchors the reference mesh at the correct physical locatio
 
 ### Detect Differences
 - Combines **spatial mapping** with a **voxel comparison algorithm**.  
-- Highlights missing or misaligned components directly in XR.
 
 ### Track Progress
 - Group elements by **weekly milestones**.  
@@ -68,7 +67,7 @@ Pipe2,100%,Complete
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 - **Unity 2020.3.42f1 (LTS)**  
@@ -81,6 +80,7 @@ Pipe2,100%,Complete
 1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/DifferencesDetectionForConstructionSitesXR.git
+```
 2. Open the project in Unity 2020.3.42f1.
 3. Import **MRTK 2.8** and **QR Code Tracking Package** if not included.
 4. Build and deploy to **Hololens 2** using UWP.
