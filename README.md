@@ -79,7 +79,7 @@ Pipe2,100%,Complete
 ### Installation
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/DifferencesDetectionForConstructionSitesXR.git
+git clone https://github.com/EternaArenaOfficial/DifferencesDetectionForConstructionSitesXR.git
 ```
 2. Open the project in Unity 2020.3.42f1.
 3. Import **MRTK 2.8** and **QR Code Tracking Package** if not included.
@@ -87,14 +87,14 @@ git clone https://github.com/yourusername/DifferencesDetectionForConstructionSit
 
 ---
 
-## Usage Tips
+## 💡 Usage Tips
 - Ensure QR codes are printed clearly and placed on stable surfaces.
 - For large reference models, break them into smaller sections to improve voxel detection performance.
 - Use proper lighting conditions for accurate spatial mapping.
 
 ---
 
-## References & Resources
+## 📚 References & Resources
 - Unity Spatial Mapping: https://docs.unity3d.com/Manual/SpatialMapping.html
 - MRTK Documentation: https://learn.microsoft.com/en-us/windows/mixed-reality/mrtk-unity/
 - HoloLens 2 Development Guide: https://learn.microsoft.com/en-us/windows/mixed-reality/develop/
