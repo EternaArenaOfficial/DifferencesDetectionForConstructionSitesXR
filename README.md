@@ -35,7 +35,7 @@ It allows construction teams to compare on-site structures against reference BIM
 
 - [Unity 2020.3.42f1](https://unity.com/releases/editor/whats-new/2020.3.42)  
 - [Mixed Reality Toolkit (MRTK) 2.8](https://learn.microsoft.com/en-us/windows/mixed-reality/mrtk-unity/)  
-- [Microsoft QR Code Tracking Package](https://learn.microsoft.com/en-us/windows/mixed-reality/mrtk-unity/features/ux/qr-code-tracking)  
+- [Microsoft QR Code Tracking Package](https://github.com/microsoft/MixedReality-QRCode-Sample)  
 - **Target Platform:** HoloLens 2  
 
 ---
