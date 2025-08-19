@@ -2,7 +2,7 @@
 
 [![Unity Version](https://img.shields.io/badge/Unity-2020.3.42f1-blue)](https://unity.com/releases/editor/whats-new/2020.3.42) 
 [![MRTK Version](https://img.shields.io/badge/MRTK-2.8-green)](https://learn.microsoft.com/en-us/windows/mixed-reality/mrtk-unity/) 
-[![Platform](https://img.shields.io/badge/Platform-HoloLens2-lightgrey)]()
+[![Platform](https://img.shields.io/badge/Platform-HoloLens2-lightgrey)](https://learn.microsoft.com/en-us/windows/mixed-reality/develop/unity/unity-development-overview)
 
 An **XR application** built with **Unity** for **real-time progress tracking and discrepancy detection on construction sites**.  
 It allows construction teams to compare on-site structures against reference BIM models, visualize missing or misaligned components, and generate progress reports.
