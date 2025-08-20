@@ -93,7 +93,7 @@ git clone https://github.com/EternaArenaOfficial/DifferencesDetectionForConstruc
 - Use proper lighting conditions for accurate spatial mapping.
 
 ---
-
+ 
 ## 📚 References & Resources
 - Unity Spatial Mapping: https://learn.microsoft.com/en-us/windows/mixed-reality/develop/unity/spatial-mapping-in-unity
 - MRTK Documentation: https://learn.microsoft.com/en-us/windows/mixed-reality/mrtk-unity/
