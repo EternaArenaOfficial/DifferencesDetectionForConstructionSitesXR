@@ -32,6 +32,15 @@ public class UiValue : MonoBehaviour
 
     void Update()
     {
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            AddToValue(-.1f);
+        }
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            AddToValue(.1f);
+        }
+
         if (keyboard != null && keyboardWasOpen)
         {
             string rawText = keyboard.text;
@@ -92,6 +101,7 @@ public class UiValue : MonoBehaviour
 
     public void AddToValue(float amount)
     {
+        print("Adding " + amount + " to value. Current value: " + Value);
         Value += amount;
     }
 }

@@ -6,13 +6,15 @@ using Microsoft.MixedReality.Toolkit.UI;
 using System.IO;
 using System.Text;
 using System.Collections;
-
+using System.Globalization;
 
 public class VoxelComparison : MonoBehaviour
 {
     public GameObject referenceContainer;
     public float voxelSize = 0.05f;
     public GameObject debugCubePrefab;
+    public GameObject loadingUi;
+    public GameObject menu;
 
     private Dictionary<Transform, (int matched, int total)> objectVoxelStats = new Dictionary<Transform, (int matched, int total)>();
 
@@ -51,54 +53,75 @@ public class VoxelComparison : MonoBehaviour
 
     IEnumerator CompareVoxelGridsCoroutine()
     {
-        if(compareButton) compareButton.enabled = false;
+        if (compareButton) compareButton.enabled = false;
+
+        // Show loading UI, hide main UI
+        if (loadingUi) loadingUi.SetActive(true);
+        if (menu) menu.SetActive(false);
+        if (buttonConfigHelper) buttonConfigHelper.gameObject.SetActive(false);
+
         objectVoxelStats.Clear();
 
-        HashSet<Vector3Int> scannedVoxels = VoxelizeSpatialMesh(referenceContainer.transform);
-        yield return StartCoroutine(CompareAndReportCoroutine(referenceContainer.transform, scannedVoxels));
-
-        Debug.Log("\n--- Summary ---");
-        Output += "--- Summary ---\n";
-        StringBuilder csvBuilder = new StringBuilder();
-        csvBuilder.AppendLine("Name,Percentage,Status");
-
-        foreach (var kvp in objectVoxelStats)
+        try
         {
-            Transform t = kvp.Key;
-            int matched = kvp.Value.matched;
-            int total = kvp.Value.total;
+            HashSet<Vector3Int> scannedVoxels = VoxelizeSpatialMesh(referenceContainer.transform);
+            yield return StartCoroutine(CompareAndReportCoroutine(referenceContainer.transform, scannedVoxels));
 
-            if (!t.gameObject.activeInHierarchy || total == 0)
-                continue;
+            Debug.Log("\n--- Summary ---");
+            Output += "--- Summary ---\n";
+            StringBuilder csvBuilder = new StringBuilder();
+            csvBuilder.AppendLine("Name,Percentage,Status");
 
-            float percent = (float)matched / total * 100f;
-            string status = percent >= 99.9f ? "Completed" : "Not Completed";
-
-            bool isDirectChild = t.parent == referenceContainer.transform.GetChild(0);
-
-            if (isDirectChild && weeksList.container.GetChild(t.GetSiblingIndex()).TryGetComponent<WeekPanel>(out var weekPanel))
+            foreach (var kvp in objectVoxelStats)
             {
-                weekPanel.value.text = $"{percent:F1}%";
+                Transform t = kvp.Key;
+
+                if (t == referenceContainer.transform)
+                    continue;
+
+                int matched = kvp.Value.matched;
+                int total = kvp.Value.total;
+
+                if (!t.gameObject.activeInHierarchy || total == 0)
+                    continue;
+
+                float percent = (float)matched / total * 100f;
+                string status = percent >= 15f ? "Completed" : "Not Completed";
+
+                bool isDirectChild = t.parent == referenceContainer.transform.GetChild(0);
+
+                if (isDirectChild && weeksList.container.GetChild(t.GetSiblingIndex()).TryGetComponent<WeekPanel>(out var weekPanel))
+                {
+                    weekPanel.value.text = $"{percent:F1}%";
+                }
+
+                Debug.Log($"{t.name} - {status} ({percent:F1}%)");
+                Output += $"{t.name} - {status} ({percent:F1}%)\n";
+
+                csvBuilder.AppendLine($"\"{t.name}\",\"{percent.ToString("F1", CultureInfo.InvariantCulture)}%\",\"{status}\"");
+
+                if (list != null && listElement != null)
+                {
+                    var button = Instantiate(listElement, list.container);
+                    button.label.text = t.name;
+                    button.value.text = $"({percent:F1}%)";
+                    list.AddElement(button.gameObject);
+                }
+
+                yield return null; // Yield after each object summary update
             }
 
-            Debug.Log($"{t.name} - {status} ({percent:F1}%)");
-            Output += $"{t.name} - {status} ({percent:F1}%)\n";
-
-            csvBuilder.AppendLine($"\"{t.name}\",\"{percent:F1}%\",\"{status}\"");
-
-            if (list != null && listElement != null)
-            {
-                var button = Instantiate(listElement, list.container);
-                button.label.text = t.name;
-                button.value.text = $"({percent:F1}%)";
-                list.AddElement(button.gameObject);
-            }
-
-            yield return null; // Yield after each object summary update
+            SaveCSV(csvBuilder.ToString());
         }
+        finally
+        {
+            // Hide loading, show main UI
+            if (loadingUi) loadingUi.SetActive(false);
+            if (menu) menu.SetActive(true);
+            if (buttonConfigHelper) buttonConfigHelper.gameObject.SetActive(true);
 
-        SaveCSV(csvBuilder.ToString());
-        if (compareButton) compareButton.enabled = true;
+            if (compareButton) compareButton.enabled = true;
+        }
     }
 
     IEnumerator CompareAndReportCoroutine(Transform current, HashSet<Vector3Int> scannedVoxels)
@@ -312,7 +335,15 @@ public class VoxelComparison : MonoBehaviour
     void SaveCSV(string csvText)
     {
         string folderPath = Application.persistentDataPath;
-        string filePath = Path.Combine(folderPath, "VoxelComparisonSummary.csv");
+        string baseFileName = "VoxelComparisonSummary";
+        string filePath = Path.Combine(folderPath, baseFileName + ".csv");
+
+        int counter = 1;
+        while (File.Exists(filePath))
+        {
+            filePath = Path.Combine(folderPath, $"{baseFileName}{counter}.csv");
+            counter++;
+        }
 
         try
         {

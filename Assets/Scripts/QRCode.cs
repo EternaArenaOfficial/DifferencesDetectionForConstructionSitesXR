@@ -101,7 +101,7 @@ namespace QRTracking
                 LaunchUri();
             }
 
-            orienter.SetActive(qrCode.Data == "Test1");
+            //orienter.SetActive(qrCode.Data == "Test1");
         }
 
         void LaunchUri()

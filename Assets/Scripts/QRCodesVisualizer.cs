@@ -11,6 +11,11 @@ namespace QRTracking
         public WeeksManager weeksManager;
         public GameObject qrCodePrefab;
         public GameObject objPrefab;
+        public GameObject orienterPrefab;
+        public GameObject orienter;
+
+        public GameObject menu;
+        public TextMeshProUGUI infoText;
 
         public Vector3 positionOffset = new Vector3(0.0f, 0.0f, 0.0f);
         public Vector3 rotationOffset = new Vector3(0.0f, 0.0f, 0.0f);
@@ -31,8 +36,8 @@ namespace QRTracking
         private Vector3 lastOrienterPosition;
         private Vector3 lastOrienterRotation;
 
-        private SortedDictionary<System.Guid, GameObject> qrCodesObjectsList;
-        private bool clearExisting = false;
+        private SortedDictionary<System.Guid, GameObject> qrCodesObjectsList = new SortedDictionary<System.Guid, GameObject>();
+        private bool clearExisting = true;
 
         private HashSet<string> usedQRData = new HashSet<string>();
         private bool qrFoundThisSession = false;
@@ -40,6 +45,11 @@ namespace QRTracking
         private bool firstSyncDone = false;
 
         public TextMeshProUGUI debugText;
+
+        private List<QRCode> qrCodesFound = new List<QRCode>();
+        private int? qrCodesRequired = null;
+
+        private HashSet<string> sessionQRData = new HashSet<string>();
 
         struct ActionData
         {
@@ -56,31 +66,67 @@ namespace QRTracking
 
         private Queue<ActionData> pendingActions = new Queue<ActionData>();
 
-        void Start()
+        void Awake()
         {
-            Debug.Log("QRCodesVisualizer start");
+            ResetSession();
+        }
+
+        private IEnumerator Start()
+        {
+            // 0) Basic null guards so we fail fast & clear
+            if (qrCodePrefab == null) throw new System.Exception("qrCodePrefab not assigned");
+            if (menu == null || infoText == null) Debug.LogWarning("menu/infoText not assigned");
+
+            debugText.text = "Starting QRCode Visualizer...";
+            // 1) Wait until the manager exists
+            while (QRCodesManager.Instance == null)
+                yield return null;
+
+            // 2) Wait until the manager finished capability init (RequestAccessAsync)
+            // Expose IsCapabilityInitialized in the manager (you already added a property in a previous message)
+            while (!QRCodesManager.Instance.IsSupported)
+                yield return null;
+
+            debugText.text += "QRCode Visualizer: Manager exists and is supported.";
+            debugText.text += "QRCode Visualizer started.";
+
+            // 3) Now it's safe to touch the manager
             qrCodesObjectsList = new SortedDictionary<System.Guid, GameObject>();
 
+            // Stopping is a no-op if not running; still guard it
+            try { QRCodesManager.Instance.StopQRTracking(); } catch { /* ignore */ }
+
+            debugText.text += "\nQR Tracking stopped for reset.";
+
+            ResetSession();
+            QRCodesManager.Instance.AutoStartQRTracking = true;
+
+            debugText.text += "\nQR Tracking will auto-start.";
+
+            // 4) Subscribe *after* we’re ready
             QRCodesManager.Instance.QRCodesTrackingStateChanged += Instance_QRCodesTrackingStateChanged;
             QRCodesManager.Instance.QRCodeAdded += Instance_QRCodeAdded;
             QRCodesManager.Instance.QRCodeUpdated += Instance_QRCodeUpdated;
             QRCodesManager.Instance.QRCodeRemoved += Instance_QRCodeRemoved;
 
-            if (qrCodePrefab == null)
-                throw new System.Exception("Prefab not assigned");
-
             LoadOffsets();
+
+            debugText.text += "\nSubscribed to QR events and loaded offsets.";
         }
+
 
         private void Instance_QRCodesTrackingStateChanged(object sender, bool status)
         {
             if (!status) clearExisting = true;
+            debugText.text = $"QR Tracking State Changed: {status}";
         }
 
         private void Instance_QRCodeAdded(object sender, QRCodeEventArgs<Microsoft.MixedReality.QR.QRCode> e)
         {
             lock (pendingActions)
+            {
                 pendingActions.Enqueue(new ActionData(ActionData.Type.Added, e.Data));
+            }
         }
 
         private void Instance_QRCodeUpdated(object sender, QRCodeEventArgs<Microsoft.MixedReality.QR.QRCode> e)
@@ -104,7 +150,7 @@ namespace QRTracking
                     var action = pendingActions.Dequeue();
                     var qrData = action.qrCode?.Data;
 
-                    if (action.type == ActionData.Type.Added)
+                    if (action.type == ActionData.Type.Added || action.type == ActionData.Type.Updated)
                     {
                         if (!usedQRData.Contains(qrData))
                         {
@@ -112,65 +158,20 @@ namespace QRTracking
                             qrCodeObject.GetComponent<SpatialGraphCoordinateSystem>().Id = action.qrCode.SpatialGraphNodeId;
                             qrCodeObject.GetComponent<QRCode>().qrCode = action.qrCode;
 
-                            qrCodesObjectsList.Add(action.qrCode.Id, qrCodeObject);
+                            qrCodesObjectsList[action.qrCode.Id] = qrCodeObject;
                             usedQRData.Add(qrData);
-                        }
-                        else
-                        {
-                            Debug.Log($"Duplicate QR code data detected and ignored: {qrData}");
-                        }
-                    }
-                    else if (action.type == ActionData.Type.Updated)
-                    {
-                        if (!qrCodesObjectsList.ContainsKey(action.qrCode.Id))
-                        {
-                            if (!usedQRData.Contains(qrData))
-                            {
-                                GameObject qrCodeObject = Instantiate(qrCodePrefab, Vector3.zero, Quaternion.identity);
-                                qrCodeObject.GetComponent<SpatialGraphCoordinateSystem>().Id = action.qrCode.SpatialGraphNodeId;
-                                qrCodeObject.GetComponent<QRCode>().qrCode = action.qrCode;
-
-                                qrCodesObjectsList.Add(action.qrCode.Id, qrCodeObject);
-                                usedQRData.Add(qrData);
-                            }
                         }
                     }
                     else if (action.type == ActionData.Type.Removed)
                     {
-                        if (qrCodesObjectsList.ContainsKey(action.qrCode.Id))
+                        if (qrCodesObjectsList.TryGetValue(action.qrCode.Id, out GameObject go))
                         {
-                            GameObject go = qrCodesObjectsList[action.qrCode.Id];
-                            string dataToRemove = go.GetComponent<QRCode>().qrCode?.Data;
-
-                            if (dataToRemove != null && usedQRData.Contains(dataToRemove))
-                                usedQRData.Remove(dataToRemove);
-
                             Destroy(go);
                             qrCodesObjectsList.Remove(action.qrCode.Id);
-
-                            if (dataToRemove == "Test1")
-                            {
-                                if (obj != null) Destroy(obj);
-                                obj = null;
-                                qrFoundThisSession = false;
-                            }
+                            usedQRData.Remove(qrData);
                         }
                     }
                 }
-            }
-
-            if (clearExisting)
-            {
-                clearExisting = false;
-                foreach (var obj in qrCodesObjectsList.Values)
-                    Destroy(obj);
-
-                qrCodesObjectsList.Clear();
-                usedQRData.Clear();
-
-                if (obj != null) Destroy(obj);
-                obj = null;
-                qrFoundThisSession = false;
             }
         }
 
@@ -178,7 +179,32 @@ namespace QRTracking
         {
             if (Input.GetKeyDown(KeyCode.W)) weeksManager.AddWeeks();
 
+            if (Input.GetKeyDown(KeyCode.K))
+            {
+                obj = Instantiate(objPrefab, Vector3.zero, Quaternion.identity, transform);
+
+                Vector3 sum = Vector3.zero;
+                int count = 0;
+                foreach (var qr in FindObjectsOfType<QRCode>())
+                {
+                    if (qr.orienter != null)
+                    {
+                        sum += qr.orienter.transform.position;
+                        count++;
+                    }
+                }
+
+                if(count > 0) sum /= count;
+                orienter = Instantiate(orienterPrefab, sum, Quaternion.identity);
+            }
+
             HandleEvents();
+
+            if (clearExisting)
+            {
+                ResetSession();
+                clearExisting = false;
+            }
 
             bool foundQR = false;
 
@@ -188,48 +214,96 @@ namespace QRTracking
                 QRCode qrCode = qrGO.GetComponent<QRCode>();
                 var qrData = qrCode.qrCode?.Data;
 
-                if (qrData != "Test1") continue;
+                if (!qrData.StartsWith("QR_") || qrCodesFound.Contains(qrCode)) continue;
+                //debugText.text += $"Found QR Code: {qrData}";
+
+                if (qrCodesFound.Count <= 0)
+                {
+                    qrCodesRequired = int.Parse(qrData.Split('_')[1]);
+                }
+
+                qrCodesFound.Add(qrCode);
+                infoText.text = $"Found {qrCodesFound.Count}/{qrCodesRequired} QR Codes";
+
+                //debugText.text += $"\nQR Codes Found: {qrCodesFound.Count}/{qrCodesRequired}";
 
                 var spatial = qrGO.GetComponent<SpatialGraphCoordinateSystem>();
-                if (spatial != null && spatial.IsLocated)
+                //debugText.text += $"\nSpatial Graph Node: |{spatial}| && {spatial?.IsLocated} && {qrCodesFound.Count >= qrCodesRequired}";
+
+                if (qrCodesFound.Count >= qrCodesRequired)
                 {
-                    SyncOrienterAndUiValues(qrCode);
-                    UpdateObjectTransform(qrCode); // still needed to position the actual object in the world
+                    UpdateObjectTransform(); // still needed to position the actual object in the world
+                    SyncOrienterAndUiValues();
                     foundQR = true;
                     qrFoundThisSession = true;
+
+                    //debugText.text += $"Obj: {obj} Orienter: {orienter}";
+
+                    menu.SetActive(true);
+                    infoText.gameObject.SetActive(false);
+
                     break;
                 }
             }
 
+            if (obj)
+            {
+                SyncOrienterAndUiValues();
+                UpdateObjectTransform();
+            }
 
-            if (!foundQR && obj != null)
+            if (qrCodesFound.Count <= 0 && obj != null)
             {
                 Destroy(obj);
                 obj = null;
                 qrFoundThisSession = false;
             }
+
         }
 
-        private void UpdateObjectTransform(QRCode qr)
+        private void UpdateObjectTransform()
         {
+            if (orienter == null)
+            {
+                orienter = Instantiate(orienterPrefab, Vector3.zero, Quaternion.identity);
+            }
+
+            debugText.text = "Creating orienter...";
+            Vector3 sum = Vector3.zero;
+            int count = 0;
+            foreach (var qr in qrCodesFound)
+            {
+                var spatial = qr.orienter.GetComponent<SpatialGraphCoordinateSystem>();
+                if (spatial != null && spatial.IsLocated)
+                {
+                    debugText.text += $"\nUsing QR Code for orienter: {qr.orienter.transform.position}";
+                    sum += qr.orienter.transform.position;
+                    count++;
+                }
+                else
+                {
+                    debugText.text += "\nSkipping orienter (not located yet)";
+                }
+            }
+
+            if (count > 0)
+            {
+                Vector3 finalPos = sum / count;
+                debugText.text += $"\nSetting orienter position to: {finalPos}";
+                orienter.transform.position = finalPos;
+            }
+
             if (obj == null)
             {
                 obj = Instantiate(objPrefab, Vector3.zero, Quaternion.identity, transform);
-                qr.relatedObj = obj;
                 weeksManager.AddWeeks();
             }
 
-            if (qr.orienter == null)
+            if (orienter != null && obj != null)
             {
-                debugText.text = ("qr.orienter is null. Skipping transform update.");
-                return;
+                obj.transform.position = orienter.transform.position + positionOffset;
+                obj.transform.rotation = Quaternion.Euler(orienter.transform.eulerAngles + rotationOffset);
             }
-
-            Transform orienter = qr.orienter.transform;
-
-            obj.transform.position = orienter.position;
-            obj.transform.eulerAngles = orienter.eulerAngles;
-            obj.transform.localScale = Vector3.one * 0.001f;
         }
 
         private void SaveOffsets(Vector3 position, Vector3 rotation)
@@ -260,17 +334,15 @@ namespace QRTracking
             }
         }
 
-        private void SyncOrienterAndUiValues(QRCode qr)
+        private void SyncOrienterAndUiValues()
         {
-            if (qr.orienter == null) return;
-
-            Transform orienter = qr.orienter.transform;
+            if (orienter == null) return;
 
             Vector3 uiPos = new Vector3(xValue.Value, yValue.Value, zValue.Value);
             Vector3 uiRot = new Vector3(xRot.Value, yRot.Value, zRot.Value);
 
-            Vector3 orienterPos = orienter.position;
-            Vector3 orienterRot = orienter.eulerAngles;
+            Vector3 orienterPos = orienter.transform.position;
+            Vector3 orienterRot = orienter.transform.eulerAngles;
 
             if (!firstSyncDone)
             {
@@ -298,8 +370,8 @@ namespace QRTracking
             if (uiChanged && !orienterChanged)
             {
                 // UI changed → update orienter
-                orienter.position = uiPos;
-                orienter.eulerAngles = uiRot;
+                orienter.transform.position = uiPos;
+                orienter.transform.eulerAngles = uiRot;
             }
             else if (orienterChanged && !uiChanged)
             {
@@ -316,8 +388,13 @@ namespace QRTracking
             // Save last frame values
             lastUiPosition = new Vector3(xValue.Value, yValue.Value, zValue.Value);
             lastUiRotation = new Vector3(xRot.Value, yRot.Value, zRot.Value);
-            lastOrienterPosition = orienter.position;
-            lastOrienterRotation = orienter.eulerAngles;
+            lastOrienterPosition = orienter.transform.position;
+            lastOrienterRotation = orienter.transform.eulerAngles;
+
+            //debugText.text += $"Orienter Position: {orienter.transform.position}\n" +
+            //$"Orienter Rotation: {orienter.transform.eulerAngles}\n" +
+            //$"UI Position: {lastUiPosition}\n" +
+            //$"UI Rotation: {lastUiRotation}";
         }
 
         public void ClearSavedOffsets()
@@ -325,6 +402,41 @@ namespace QRTracking
             PlayerPrefs.DeleteKey(PosKey);
             PlayerPrefs.DeleteKey(RotKey);
             PlayerPrefs.Save();
+        }
+
+        public void ResetSession()
+        {
+            menu.SetActive(false);
+            infoText.gameObject.SetActive(true);
+
+            // Stop watcher
+            QRCodesManager.Instance?.StopQRTracking();
+            debugText.text += "Resetting session...";
+            debugText.text += $"\nClearing {qrCodesObjectsList.Count} QR objects";
+
+            // Destroy scene objects
+            foreach (var qr in FindObjectsOfType<QRCode>())
+                Destroy(qr.gameObject);
+
+            if (obj != null) Destroy(obj);
+            obj = null;
+
+            if (orienter != null) Destroy(orienter);
+            orienter = null;
+
+            qrCodesObjectsList.Clear();
+            usedQRData.Clear();
+            qrCodesFound.Clear();
+            qrCodesRequired = null;
+
+            debugText.text += $"\nCleared all QR objects";
+
+            qrFoundThisSession = false;
+            firstSyncDone = false;
+
+            // Restart watcher
+            QRCodesManager.Instance?.StartQRTracking();
+            debugText.text += $"\nRestarted QR tracking";
         }
     }
 }
